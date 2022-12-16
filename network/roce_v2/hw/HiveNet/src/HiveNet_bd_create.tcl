@@ -31,19 +31,6 @@ variable script_folder
 set script_folder [_tcl::get_script_folder]
 
 ################################################################
-# Check if script is running in correct Vivado version.
-################################################################
-set scripts_vivado_version 2022.1
-set current_vivado_version [version -short]
-
-if { [string first $scripts_vivado_version $current_vivado_version] == -1 } {
-   puts ""
-   catch {common::send_gid_msg -ssname BD::TCL -id 2041 -severity "ERROR" "This script was generated using Vivado <$scripts_vivado_version> and is being run in <$current_vivado_version> of Vivado. Please run the script in Vivado <$scripts_vivado_version> then open the design in Vivado <$current_vivado_version>. Upgrade the design by running \"Tools => Report => Report IP Status...\", then run write_bd_tcl to create an updated script."}
-
-   return 1
-}
-
-################################################################
 # START
 ################################################################
 
@@ -57,82 +44,11 @@ if { [string first $scripts_vivado_version $current_vivado_version] == -1 } {
 
 # Please add the sources of those modules before sourcing this Tcl script.
 
-# If there is no project opened, this script will create a
-# project, but make sure you do not have an existing project
-# <./myproj/project_1.xpr> in the current working folder.
-
-set list_projs [get_projects -quiet]
-if { $list_projs eq "" } {
-   create_project project_1 myproj -part xcu55c-fsvh2892-2L-e
-   set_property BOARD_PART xilinx.com:au55c:part0:1.0 [current_project]
-}
-
-
 # CHANGE DESIGN NAME HERE
 variable design_name
 set design_name HiveNet
 
-# This script was generated for a remote BD. To create a non-remote design,
-# change the variable <run_remote_bd_flow> to <0>.
-
-set run_remote_bd_flow 1
-if { $run_remote_bd_flow == 1 } {
-  # Set the reference directory for source file relative paths (by default 
-  # the value is script directory path)
-  set origin_dir ./ip
-
-  # Use origin directory path location variable, if specified in the tcl shell
-  if { [info exists ::origin_dir_loc] } {
-     set origin_dir $::origin_dir_loc
-  }
-
-  set str_bd_folder [file normalize ${origin_dir}]
-  set str_bd_filepath ${str_bd_folder}/${design_name}/${design_name}.bd
-
-  # Check if remote design exists on disk
-  if { [file exists $str_bd_filepath ] == 1 } {
-     catch {common::send_gid_msg -ssname BD::TCL -id 2030 -severity "ERROR" "The remote BD file path <$str_bd_filepath> already exists!"}
-     common::send_gid_msg -ssname BD::TCL -id 2031 -severity "INFO" "To create a non-remote BD, change the variable <run_remote_bd_flow> to <0>."
-     common::send_gid_msg -ssname BD::TCL -id 2032 -severity "INFO" "Also make sure there is no design <$design_name> existing in your current project."
-
-     return 1
-  }
-
-  # Check if design exists in memory
-  set list_existing_designs [get_bd_designs -quiet $design_name]
-  if { $list_existing_designs ne "" } {
-     catch {common::send_gid_msg -ssname BD::TCL -id 2033 -severity "ERROR" "The design <$design_name> already exists in this project! Will not create the remote BD <$design_name> at the folder <$str_bd_folder>."}
-
-     common::send_gid_msg -ssname BD::TCL -id 2034 -severity "INFO" "To create a non-remote BD, change the variable <run_remote_bd_flow> to <0> or please set a different value to variable <design_name>."
-
-     return 1
-  }
-
-  # Check if design exists on disk within project
-  set list_existing_designs [get_files -quiet */${design_name}.bd]
-  if { $list_existing_designs ne "" } {
-     catch {common::send_gid_msg -ssname BD::TCL -id 2035 -severity "ERROR" "The design <$design_name> already exists in this project at location:
-    $list_existing_designs"}
-     catch {common::send_gid_msg -ssname BD::TCL -id 2036 -severity "ERROR" "Will not create the remote BD <$design_name> at the folder <$str_bd_folder>."}
-
-     common::send_gid_msg -ssname BD::TCL -id 2037 -severity "INFO" "To create a non-remote BD, change the variable <run_remote_bd_flow> to <0> or please set a different value to variable <design_name>."
-
-     return 1
-  }
-
-  # Now can create the remote BD
-  # NOTE - usage of <-dir> will create <$str_bd_folder/$design_name/$design_name.bd>
-  create_bd_design -dir $str_bd_folder $design_name
-} else {
-
-  # Create regular design
-  if { [catch {create_bd_design $design_name} errmsg] } {
-     common::send_gid_msg -ssname BD::TCL -id 2038 -severity "INFO" "Please set a different value to variable <design_name>."
-
-     return 1
-  }
-}
-
+create_bd_design $design_name
 current_bd_design $design_name
 
 set bCheckIPsPassed 1
@@ -2399,6 +2315,8 @@ proc create_root_design { parentCell HBM_BANK } {
    CONFIG.WIDTH {32} \
  ] $xpm_cdc_gen_0
 
+  save_bd_design
+
   # Create interface connections
   connect_bd_intf_net -intf_net HiveNet_0_tx_out [get_bd_intf_pins HiveNet_0h/tx_out] [get_bd_intf_pins axis_register_slice_3/S_AXIS]
   connect_bd_intf_net -intf_net HiveNet_0h_M_AXIS_0 [get_bd_intf_pins HiveNet_0h/M_AXIS_0] [get_bd_intf_pins axis_clock_converter_1/S_AXIS]
@@ -2454,14 +2372,20 @@ proc create_root_design { parentCell HBM_BANK } {
   connect_bd_net -net xlconstant_0_dout [get_bd_pins axi_address_remap_0/start_address] [get_bd_pins xlconstant_0/dout]
   connect_bd_net -net xpm_cdc_gen_0_dest_out [get_bd_pins ethernet_stack_0/myIpAddress_V_0] [get_bd_pins xpm_cdc_gen_0/dest_out]
 
+  save_bd_design
+
   # Create address segments
   assign_bd_address -offset 0x00000000 -range 0x000400000000 -target_address_space [get_bd_addr_spaces HiveNet_0h/hier_0/asynchronousWriteToH_0/Data_m_axi_HBM] [get_bd_addr_segs HBM_write/Reg] -force
   assign_bd_address -offset 0x00000000 -range 0x000400000000 -target_address_space [get_bd_addr_spaces HiveNet_0h/hier_0/tx_checkTimeout_dev_0/Data_m_axi_header] [get_bd_addr_segs HBM_read/Reg] -force
   assign_bd_address -offset 0x00000000 -range 0x000400000000 -target_address_space [get_bd_addr_spaces HiveNet_0h/hier_0/tx_checkcurrent_data_0/Data_m_axi_HBM_a] [get_bd_addr_segs HBM_read/Reg] -force
-  assign_bd_address -offset 0x00000080 -range 0x00000080 -target_address_space [get_bd_addr_spaces S00_AXI_0] [get_bd_addr_segs HiveNet_0h/axi_gpio_0/S_AXI/Reg] -force
-  assign_bd_address -offset 0x00000100 -range 0x00000080 -target_address_space [get_bd_addr_spaces S00_AXI_0] [get_bd_addr_segs registers_0/axi_gpio_0/S_AXI/Reg] -force
-  assign_bd_address -offset 0x00000000 -range 0x00000080 -target_address_space [get_bd_addr_spaces S00_AXI_0] [get_bd_addr_segs registers_0/register_map_full_0/s_axi_AXILiteS/Reg] -force
+  assign_bd_address -offset 0x00000000 -range 128 -target_address_space [get_bd_addr_spaces S00_AXI_0] [get_bd_addr_segs registers_0/register_map_full_0/s_axi_AXILiteS/Reg] -force
+  set_property range 128 [get_bd_addr_segs {S00_AXI_0/SEG_register_map_full_0_Reg}]
+  assign_bd_address -offset 0x00000080 -range 128 -target_address_space [get_bd_addr_spaces S00_AXI_0] [get_bd_addr_segs HiveNet_0h/axi_gpio_0/S_AXI/Reg] -force
+  set_property range 128 [get_bd_addr_segs {S00_AXI_0/SEG_axi_gpio_0_Reg}]
+  assign_bd_address -offset 0x00000100 -range 128 -target_address_space [get_bd_addr_spaces S00_AXI_0] [get_bd_addr_segs registers_0/axi_gpio_0/S_AXI/Reg] -force
+  set_property range 128 [get_bd_addr_segs {S00_AXI_0/SEG_axi_gpio_0_Reg_1}]
 
+  save_bd_design
 
   # Restore current instance
   current_bd_instance $oldCurInst
